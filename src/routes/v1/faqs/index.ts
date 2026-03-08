@@ -1,31 +1,74 @@
 import { Hono } from 'hono';
-import { and, asc, eq, ilike, or } from 'drizzle-orm';
+import { asc } from 'drizzle-orm';
 import { validator } from 'hono-openapi';
-import type { AppContext } from '$src/types';
+import type { AppContext, IncludeConfig } from '$src/types';
+import { ACCESS } from '$src/db/schema';
 import { faqCategories, faqQuestions } from '$src/db/schema';
 import {
+    FAQ_CATEGORY_FORBIDDEN,
+    FAQ_CATEGORY_INCLUDES,
+    FAQ_QUESTION_FORBIDDEN,
+    FAQ_QUESTION_INCLUDES,
     faqListDocs,
     faqSearchDocs,
     faqSingleDocs,
     FaqIdentifierParamSchema,
+    FaqListQuerySchema,
     FaqSearchQuerySchema,
+    FaqSingleQuerySchema,
 } from './schema';
+import { buildFieldSelection, buildRelationalWith, getByIdOrSlug } from '$src/utils';
 
 const app = new Hono<AppContext>();
 
-const SEARCH_PAGE_SIZE = 10;
-
-// GET /faqs
-app.get('/', faqListDocs, async (c) => {
-    const db = c.get('db');
-
-    const data = await db.query.faqCategories.findMany({
-        with: {
+const FAQ_CATEGORY_RELATIONS: Record<string, IncludeConfig<'faqCategories'>> = {
+    questions: {
+        requiredRole: ACCESS.Public,
+        drizzleWith: {
             questions: {
+                columns: {
+                    id: true,
+                    categoryId: true,
+                    question: true,
+                    answer: true,
+                    displayOrder: true,
+                    isPublished: true,
+                },
                 where: { isPublished: true },
                 orderBy: (q, { asc }) => [asc(q.displayOrder), asc(q.id)],
             },
         },
+    },
+};
+
+const FAQ_QUESTION_RELATIONS: Record<string, IncludeConfig<'faqQuestions'>> = {
+    category: {
+        requiredRole: ACCESS.Public,
+        drizzleWith: {
+            category: {
+                columns: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    parentId: true,
+                    displayOrder: true,
+                },
+            },
+        },
+    },
+};
+
+// GET /faqs
+app.get('/', faqListDocs, validator('query', FaqListQuerySchema), async (c) => {
+    const db = c.get('db');
+    const { fields, include = [] } = c.req.valid('query');
+
+    const selection = buildFieldSelection(faqCategories, fields, FAQ_CATEGORY_FORBIDDEN, { id: true });
+    const relationalWith = buildRelationalWith(include, FAQ_CATEGORY_RELATIONS, ACCESS.Public);
+
+    const data = await db.query.faqCategories.findMany({
+        columns: selection,
+        with: relationalWith,
         orderBy: (cat, { asc }) => [asc(cat.displayOrder), asc(cat.id)],
     });
 
@@ -35,69 +78,53 @@ app.get('/', faqListDocs, async (c) => {
 // GET /faqs/search?q={query}&page={page}
 app.get('/search', faqSearchDocs, validator('query', FaqSearchQuerySchema), async (c) => {
     const db = c.get('db');
-    const { q, page } = c.req.valid('query');
+    const { q, page, limit, fields, include = [] } = c.req.valid('query');
 
-    const data = await db
-        .select({
-            id: faqQuestions.id,
-            question: faqQuestions.question,
-            answer: faqQuestions.answer,
-            displayOrder: faqQuestions.displayOrder,
-            category: {
-                id: faqCategories.id,
-                name: faqCategories.name,
-                slug: faqCategories.slug,
-                parentId: faqCategories.parentId,
-                displayOrder: faqCategories.displayOrder,
-            },
-        })
-        .from(faqQuestions)
-        .innerJoin(faqCategories, eq(faqQuestions.categoryId, faqCategories.id))
-        .where(
-            and(
-                eq(faqQuestions.isPublished, true),
-                or(
-                    ilike(faqQuestions.question, `%${q}%`),
-                    ilike(faqQuestions.answer, `%${q}%`),
-                ),
-            ),
-        )
-        .orderBy(
-            asc(faqCategories.displayOrder),
-            asc(faqQuestions.displayOrder),
-            asc(faqQuestions.id),
-        )
-        .limit(SEARCH_PAGE_SIZE)
-        .offset((page - 1) * SEARCH_PAGE_SIZE);
+    const questionSelection = buildFieldSelection(faqQuestions, fields, FAQ_QUESTION_FORBIDDEN, {
+        id: true,
+    });
+    const relationalWith = buildRelationalWith(include, FAQ_QUESTION_RELATIONS, ACCESS.Public);
+
+    const data = await db.query.faqQuestions.findMany({
+        where: {
+            isPublished: true,
+            OR: [
+                { question: { ilike: `%${q}%` } },
+                { answer: { ilike: `%${q}%` } },
+            ],
+        },
+        columns: questionSelection,
+        with: relationalWith,
+        orderBy: (question, { asc }) => [asc(question.displayOrder), asc(question.id)],
+        limit,
+        offset: (page - 1) * limit,
+    });
 
     return c.json({ data, page });
 });
 
 // GET /faqs/:identifier
-app.get('/:identifier', faqSingleDocs, validator('param', FaqIdentifierParamSchema), async (c) => {
+app.get(
+    '/:identifier',
+    faqSingleDocs,
+    validator('param', FaqIdentifierParamSchema),
+    validator('query', FaqSingleQuerySchema),
+    async (c) => {
     const db = c.get('db');
     const { identifier } = c.req.valid('param');
+    const { fields, include = [] } = c.req.valid('query');
+    const identifierLookup = getByIdOrSlug(faqCategories, identifier);
 
-    if (/^\d+$/.test(identifier)) {
+    if ('id' in identifierLookup.query) {
+        const questionSelection = buildFieldSelection(faqQuestions, fields, FAQ_QUESTION_FORBIDDEN, {
+            id: true,
+        });
+        const relationalWith = buildRelationalWith(include, FAQ_QUESTION_RELATIONS, ACCESS.Public);
+
         const data = await db.query.faqQuestions.findFirst({
-            where: { id: Number(identifier), isPublished: true },
-            with: {
-                category: {
-                    columns: {
-                        id: true,
-                        name: true,
-                        slug: true,
-                        parentId: true,
-                        displayOrder: true,
-                    },
-                },
-            },
-            columns: {
-                id: true,
-                question: true,
-                answer: true,
-                displayOrder: true,
-            },
+            where: { id: identifierLookup.query.id, isPublished: true },
+            columns: questionSelection,
+            with: relationalWith,
         });
 
         if (!data) return c.json({ error: 'FAQ not found' }, 404);
@@ -105,19 +132,21 @@ app.get('/:identifier', faqSingleDocs, validator('param', FaqIdentifierParamSche
         return c.json({ data });
     }
 
+    const categorySelection = buildFieldSelection(faqCategories, fields, FAQ_CATEGORY_FORBIDDEN, {
+        id: true,
+    });
+    const relationalWith = buildRelationalWith(include, FAQ_CATEGORY_RELATIONS, ACCESS.Public);
+
     const data = await db.query.faqCategories.findFirst({
-        where: { slug: identifier },
-        with: {
-            questions: {
-                where: { isPublished: true },
-                orderBy: (q, { asc }) => [asc(q.displayOrder), asc(q.id)],
-            },
-        },
+        where: identifierLookup.query,
+        columns: categorySelection,
+        with: relationalWith,
     });
 
     if (!data) return c.json({ error: 'FAQ not found' }, 404);
 
     return c.json({ data });
-});
+    },
+);
 
 export default app;
