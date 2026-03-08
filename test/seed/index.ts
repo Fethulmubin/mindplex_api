@@ -25,7 +25,6 @@ export type PostFixture = {
 };
 
 export const POSTS: PostFixture[] = [
-    // ── Used by: post.test.ts, comment.test.ts, interaction.test.ts ──
     {
         authorRole: "editor",
         title: "Test Commentable Post",
@@ -223,9 +222,7 @@ export type WalletFixture = {
     publicAddress: string;
 };
 
-export const WALLETS: WalletFixture[] = [
-    { userRole: "user", publicAddress: `${TEST_PREFIX}0xabc123def456` },
-];
+export const WALLETS: WalletFixture[] = [{ userRole: "user", publicAddress: `${TEST_PREFIX}0xabc123def456` }];
 
 // ─── Friend Requests ────────────────────────────────────
 
@@ -238,4 +235,22 @@ export type FriendRequestFixture = {
 export const FRIEND_REQUESTS: FriendRequestFixture[] = [
     { requesterRole: "editor", requestedRole: "user", status: "pending" },
     { requesterRole: "admin", requestedRole: "user", status: "accepted" },
+];
+
+// ─── Follows ────────────────────────────────────────────
+
+export type FollowFixture = {
+    followerRole: "user" | "editor" | "admin" | "moderator";
+    followingRole: "user" | "editor" | "admin" | "moderator";
+    status: "follow" | "block";
+};
+
+export const FOLLOWS: FollowFixture[] = [
+    // editor and admin follow user (for GET /:username/followers)
+    { followerRole: "editor", followingRole: "user", status: "follow" },
+    { followerRole: "admin", followingRole: "user", status: "follow" },
+    // user follows editor (for GET /:username/following)
+    { followerRole: "user", followingRole: "editor", status: "follow" },
+    // moderator blocks user (for block/unblock tests)
+    { followerRole: "moderator", followingRole: "user", status: "block" },
 ];

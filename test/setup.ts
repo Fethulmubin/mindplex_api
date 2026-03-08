@@ -11,8 +11,7 @@ import {
   COMMENTS,
   REACTIONS,
   PEOPLES_CHOICE_VOTES,
-} from "./seed";
-import {
+  FOLLOWS,
   INTERESTS,
   EDUCATION,
   WALLETS,
@@ -51,6 +50,7 @@ export type SeededData = {
   education: { id: number; userId: number }[];
   wallets: { id: number; userId: number; publicAddress: string | null }[];
   friendRequests: { id: number; requesterId: number; requestedId: number; status: string }[];
+  follows: { id: number; followerId: number; followingId: number; status: string }[];
 };
 
 // ─── User Creation ──────────────────────────────────────
@@ -102,9 +102,7 @@ export async function asRole(role: Role): Promise<TestUser> {
 
 export async function seed(): Promise<SeededData> {
   // 1. Users
-  const [admin, editor, moderator, user] = await Promise.all(
-    USER_ROLES.map((role) => asRole(role)),
-  );
+  const [admin, editor, moderator, user] = await Promise.all(USER_ROLES.map((role) => asRole(role)));
   const users = { admin, editor, moderator, user };
   const usersByRole: Record<string, TestUser> = users;
 
@@ -227,6 +225,21 @@ export async function seed(): Promise<SeededData> {
     friendRequests.push(row);
   }
 
+  // 10. Follows
+  const followsData = [];
+  for (const fixture of FOLLOWS) {
+    const [row] = await db
+      .insert(schema.follows)
+      .values({
+        followerId: usersByRole[fixture.followerRole].id,
+        followingId: usersByRole[fixture.followingRole].id,
+        status: fixture.status,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (row) followsData.push(row);
+  }
+
   return {
     users,
     posts,
@@ -240,6 +253,7 @@ export async function seed(): Promise<SeededData> {
     education,
     wallets,
     friendRequests,
+    follows: followsData,
   };
 }
 
@@ -273,6 +287,8 @@ export async function cleanup() {
 
   // User-scoped cleanup
   if (userIds.length > 0) {
+    await db.delete(schema.follows).where(inArray(schema.follows.followerId, userIds));
+    await db.delete(schema.follows).where(inArray(schema.follows.followingId, userIds));
     await db.delete(schema.userInterests).where(inArray(schema.userInterests.userId, userIds));
     await db.delete(schema.userEducation).where(inArray(schema.userEducation.userId, userIds));
     await db.delete(schema.userWallets).where(inArray(schema.userWallets.userId, userIds));
