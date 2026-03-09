@@ -9,7 +9,7 @@ const postsCol = getColumns(posts);
 type PostColumn = keyof typeof postsCol;
 
 export const FORBIDDEN_COLUMNS = new Set<PostColumn>(["commentEnabled"]);
-export const ALLOWED_INCLUDES = ["authors", "categories", "stats"];
+export const ALLOWED_INCLUDES = ["authors", "categories", "stats", 'media'];
 
 export const UPDATABLE_FIELDS = new Set([
   "title",

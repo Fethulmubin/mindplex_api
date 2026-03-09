@@ -1,0 +1,1 @@
+ALTER TABLE "posts" DROP COLUMN "featured_image_url";

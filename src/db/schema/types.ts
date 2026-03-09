@@ -20,6 +20,14 @@ export const ROLE_HIERARCHY = [
   ROLE.Admin,
 ] as const;
 
+export const POST_MEDIA_ROLE = {
+  Thumbnail: "thumbnail",
+  Banner: "banner",
+  Audio: "audio",
+  Gallery: "gallery",
+  Attachment: "attachment",
+} as const;
+
 export const THEME = {
   Light: "light",
   Dark: "dark",
@@ -162,6 +170,8 @@ export const EMAIL_DELIVERY_STATUS = {
 
 export type Role = (typeof ROLE)[keyof typeof ROLE];
 export type Access = (typeof ACCESS)[keyof typeof ACCESS];
+
+export type PostMediaRole = (typeof POST_MEDIA_ROLE)[keyof typeof POST_MEDIA_ROLE];
 
 export type Theme = (typeof THEME)[keyof typeof THEME];
 export type PrivacyLevel = (typeof PRIVACY_LEVEL)[keyof typeof PRIVACY_LEVEL];

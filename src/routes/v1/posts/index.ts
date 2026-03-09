@@ -31,6 +31,11 @@ export const POST_INCLUDES: Record<string, IncludeConfig<"posts">> = {
     drizzleWith: {
       author: {
         columns: { id: true, username: true },
+        with: {
+          profile: {
+            columns: { firstName: true, lastName: true, bio: true, avatarUrl: true },
+          },
+        },
       },
     },
   },
@@ -46,6 +51,19 @@ export const POST_INCLUDES: Record<string, IncludeConfig<"posts">> = {
     requiredRole: ACCESS.Public,
     drizzleWith: {
       stats: true,
+    },
+  },
+  media: {
+    requiredRole: ACCESS.Public,
+    drizzleWith: {
+      postMedia: {
+        columns: { role: true, displayOrder: true, captionOverride: true },
+        with: {
+          media: {
+            columns: { id: true, url: true, altText: true, caption: true, mimeType: true },
+          },
+        },
+      },
     },
   },
 } as const;

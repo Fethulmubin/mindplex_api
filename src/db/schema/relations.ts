@@ -292,10 +292,24 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.posts.id.through(r.postAuthors.postId),
       to: r.users.id.through(r.postAuthors.userId),
     }),
-
+    postMedia: r.many.postMedia({
+      from: r.posts.id,
+      to: r.postMedia.postId,
+    }),
+    postAuthors: r.many.postAuthors(),
     taxonomies: r.many.taxonomies({
       from: r.posts.id.through(r.postTaxonomies.postId),
       to: r.taxonomies.id.through(r.postTaxonomies.taxonomyId),
+    }),
+  },
+  postMedia: {
+    post: r.one.posts({
+      from: r.postMedia.postId,
+      to: r.posts.id,
+    }),
+    media: r.one.media({
+      from: r.postMedia.mediaId,
+      to: r.media.id,
     }),
   },
   postAuthors: {

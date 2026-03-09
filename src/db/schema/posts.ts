@@ -1,6 +1,6 @@
 import { pgTable, serial, varchar, text, jsonb, boolean, timestamp, integer, unique, index } from "drizzle-orm/pg-core";
 import { users } from "./users";
-import type { PostStatus, PostType } from "./types";
+import type { PostMediaRole, PostStatus, PostType } from "./types";
 
 export const posts = pgTable(
   "posts",
@@ -13,7 +13,6 @@ export const posts = pgTable(
     slug: varchar("slug", { length: 255 }).unique().notNull(),
     content: text("content").notNull().default(""),
     excerpt: text("excerpt").default(""),
-    featuredImageUrl: text("featured_image_url"),
 
     status: varchar("status", { length: 20 }).$type<PostStatus>().default("draft").notNull(),
     type: varchar("type", { length: 20 }).$type<PostType>().default("article").notNull(),
@@ -74,6 +73,32 @@ export const postStats = pgTable("post_stats", {
   bookmarkCount: integer("bookmark_count").default(0).notNull(),
   peoplesChoiceCount: integer("peoples_choice_count").default(0).notNull(),
 });
+
+
+export const postMedia = pgTable(
+  "post_media",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    mediaId: integer("media_id")
+      .notNull()
+      .references(() => media.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 50 })
+      .$type<PostMediaRole>()
+      .notNull(),
+    displayOrder: integer("display_order").default(0).notNull(),
+    captionOverride: varchar("caption_override", { length: 500 }),
+  },
+  (table) => [
+
+    index("post_media_post_id_idx").on(table.postId),
+    index("post_media_media_id_idx").on(table.mediaId),
+    index("post_media_post_role_idx").on(table.postId, table.role),
+    unique("post_media_post_media_role_idx").on(table.postId, table.mediaId, table.role),
+  ],
+);
 
 // ============================================================================
 // Media (replaces WP attachment post type)
