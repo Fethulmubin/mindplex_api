@@ -1,23 +1,23 @@
 import { Hono } from 'hono';
-import { asc } from 'drizzle-orm';
 import { validator } from 'hono-openapi';
 import type { AppContext, IncludeConfig } from '$src/types';
 import { ACCESS } from '$src/db/schema';
 import { faqCategories, faqQuestions } from '$src/db/schema';
 import {
     FAQ_CATEGORY_FORBIDDEN,
-    FAQ_CATEGORY_INCLUDES,
     FAQ_QUESTION_FORBIDDEN,
-    FAQ_QUESTION_INCLUDES,
+    faqCategorySingleDocs,
     faqListDocs,
+    faqQuestionSingleDocs,
     faqSearchDocs,
-    faqSingleDocs,
-    FaqIdentifierParamSchema,
+    FaqCategorySingleQuerySchema,
+    FaqCategorySlugParamSchema,
     FaqListQuerySchema,
+    FaqQuestionIdParamSchema,
+    FaqQuestionSingleQuerySchema,
     FaqSearchQuerySchema,
-    FaqSingleQuerySchema,
 } from './schema';
-import { buildFieldSelection, buildRelationalWith, getByIdOrSlug } from '$src/utils';
+import { buildFieldSelection, buildRelationalWith } from '$src/utils';
 
 const app = new Hono<AppContext>();
 
@@ -79,6 +79,7 @@ app.get('/', faqListDocs, validator('query', FaqListQuerySchema), async (c) => {
 app.get('/search', faqSearchDocs, validator('query', FaqSearchQuerySchema), async (c) => {
     const db = c.get('db');
     const { q, page, limit, fields, include = [] } = c.req.valid('query');
+    const escapedQuery = q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 
     const questionSelection = buildFieldSelection(faqQuestions, fields, FAQ_QUESTION_FORBIDDEN, {
         id: true,
@@ -89,8 +90,8 @@ app.get('/search', faqSearchDocs, validator('query', FaqSearchQuerySchema), asyn
         where: {
             isPublished: true,
             OR: [
-                { question: { ilike: `%${q}%` } },
-                { answer: { ilike: `%${q}%` } },
+                { question: { ilike: `%${escapedQuery}%` } },
+                { answer: { ilike: `%${escapedQuery}%` } },
             ],
         },
         columns: questionSelection,
@@ -103,34 +104,16 @@ app.get('/search', faqSearchDocs, validator('query', FaqSearchQuerySchema), asyn
     return c.json({ data, page });
 });
 
-// GET /faqs/:identifier
+// GET /faqs/categories/:slug
 app.get(
-    '/:identifier',
-    faqSingleDocs,
-    validator('param', FaqIdentifierParamSchema),
-    validator('query', FaqSingleQuerySchema),
+    '/categories/:slug',
+    faqCategorySingleDocs,
+    validator('param', FaqCategorySlugParamSchema),
+    validator('query', FaqCategorySingleQuerySchema),
     async (c) => {
     const db = c.get('db');
-    const { identifier } = c.req.valid('param');
+    const { slug } = c.req.valid('param');
     const { fields, include = [] } = c.req.valid('query');
-    const identifierLookup = getByIdOrSlug(faqCategories, identifier);
-
-    if ('id' in identifierLookup.query) {
-        const questionSelection = buildFieldSelection(faqQuestions, fields, FAQ_QUESTION_FORBIDDEN, {
-            id: true,
-        });
-        const relationalWith = buildRelationalWith(include, FAQ_QUESTION_RELATIONS, ACCESS.Public);
-
-        const data = await db.query.faqQuestions.findFirst({
-            where: { id: identifierLookup.query.id, isPublished: true },
-            columns: questionSelection,
-            with: relationalWith,
-        });
-
-        if (!data) return c.json({ error: 'FAQ not found' }, 404);
-
-        return c.json({ data });
-    }
 
     const categorySelection = buildFieldSelection(faqCategories, fields, FAQ_CATEGORY_FORBIDDEN, {
         id: true,
@@ -138,12 +121,40 @@ app.get(
     const relationalWith = buildRelationalWith(include, FAQ_CATEGORY_RELATIONS, ACCESS.Public);
 
     const data = await db.query.faqCategories.findFirst({
-        where: identifierLookup.query,
+        where: { slug },
         columns: categorySelection,
         with: relationalWith,
     });
 
-    if (!data) return c.json({ error: 'FAQ not found' }, 404);
+    if (!data) return c.json({ error: 'FAQ category not found' }, 404);
+
+    return c.json({ data });
+    },
+);
+
+// GET /faqs/questions/:id
+app.get(
+    '/questions/:id',
+    faqQuestionSingleDocs,
+    validator('param', FaqQuestionIdParamSchema),
+    validator('query', FaqQuestionSingleQuerySchema),
+    async (c) => {
+    const db = c.get('db');
+    const { id } = c.req.valid('param');
+    const { fields, include = [] } = c.req.valid('query');
+
+    const questionSelection = buildFieldSelection(faqQuestions, fields, FAQ_QUESTION_FORBIDDEN, {
+        id: true,
+    });
+    const relationalWith = buildRelationalWith(include, FAQ_QUESTION_RELATIONS, ACCESS.Public);
+
+    const data = await db.query.faqQuestions.findFirst({
+        where: { id, isPublished: true },
+        columns: questionSelection,
+        with: relationalWith,
+    });
+
+    if (!data) return c.json({ error: 'FAQ question not found' }, 404);
 
     return c.json({ data });
     },

@@ -8,14 +8,13 @@ export const FAQ_CATEGORY_FORBIDDEN = new Set<string>(['createdAt', 'updatedAt']
 export const FAQ_QUESTION_FORBIDDEN = new Set<string>(['createdAt', 'updatedAt']);
 export const FAQ_CATEGORY_INCLUDES = ['questions'];
 export const FAQ_QUESTION_INCLUDES = ['category'];
-export const FAQ_SINGLE_INCLUDES = ['category', 'questions'];
-const FAQ_SINGLE_ALLOWED_FIELDS = new Set<string>([
-    ...getAllowedFields(faqCategories, FAQ_CATEGORY_FORBIDDEN),
-    ...getAllowedFields(faqQuestions, FAQ_QUESTION_FORBIDDEN),
-]);
 
-export const FaqIdentifierParamSchema = v.object({
-    identifier: v.pipe(v.string(), v.minLength(1), v.maxLength(255)),
+export const FaqCategorySlugParamSchema = v.object({
+    slug: v.pipe(v.string(), v.minLength(1), v.maxLength(255)),
+});
+
+export const FaqQuestionIdParamSchema = v.object({
+    id: v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)),
 });
 
 export const FaqListQuerySchema = v.object({
@@ -23,24 +22,14 @@ export const FaqListQuerySchema = v.object({
     include: createIncludesSchema(FAQ_CATEGORY_INCLUDES),
 });
 
-export const FaqSingleQuerySchema = v.object({
-    fields: v.optional(
-        v.pipe(
-            v.string(),
-            v.check(
-                (input) => {
-                    if (!input) return true;
+export const FaqCategorySingleQuerySchema = v.object({
+    fields: createFieldsSchema(faqCategories, FAQ_CATEGORY_FORBIDDEN),
+    include: createIncludesSchema(FAQ_CATEGORY_INCLUDES),
+});
 
-                    return input
-                        .split(',')
-                        .map((field) => field.trim())
-                        .every((field) => FAQ_SINGLE_ALLOWED_FIELDS.has(field));
-                },
-                `Invalid field(s). Allowed: ${Array.from(FAQ_SINGLE_ALLOWED_FIELDS).join(', ')}`,
-            ),
-        ),
-    ),
-    include: createIncludesSchema(FAQ_SINGLE_INCLUDES),
+export const FaqQuestionSingleQuerySchema = v.object({
+    fields: createFieldsSchema(faqQuestions, FAQ_QUESTION_FORBIDDEN),
+    include: createIncludesSchema(FAQ_QUESTION_INCLUDES),
 });
 
 export const FaqSearchQuerySchema = v.object({
@@ -91,8 +80,12 @@ export const FaqListResponseSchema = v.object({
     data: v.array(FaqCategoryWithQuestionsSchema),
 });
 
-export const FaqSingleResponseSchema = v.object({
-    data: v.union([FaqCategoryWithQuestionsSchema, FaqQuestionWithCategorySchema]),
+export const FaqCategorySingleResponseSchema = v.object({
+    data: FaqCategoryWithQuestionsSchema,
+});
+
+export const FaqQuestionSingleResponseSchema = v.object({
+    data: FaqQuestionWithCategorySchema,
 });
 
 export const FaqSearchResultSchema = v.object({
@@ -119,13 +112,29 @@ export const faqListDocs = describeRoute({
     },
 });
 
-export const faqSingleDocs = describeRoute({
+export const faqCategorySingleDocs = describeRoute({
     tags: ['FAQs'],
-    summary: 'Get FAQ by category slug or question id',
-    description: `If :identifier is numeric, resolves a published question by id. Otherwise resolves category by slug. Includes: ${FAQ_SINGLE_INCLUDES.join(', ')}. Fields: ${Array.from(FAQ_SINGLE_ALLOWED_FIELDS).join(', ')}`,
+    summary: 'Get FAQ category by slug',
+    description: `Gets a FAQ category by slug. Includes: ${FAQ_CATEGORY_INCLUDES.join(', ')}. Fields: ${getAllowedFields(faqCategories, FAQ_CATEGORY_FORBIDDEN).join(', ')}`,
     responses: {
-        200: { description: 'OK', content: { 'application/json': { schema: resolver(FaqSingleResponseSchema) } } },
-        404: { description: 'FAQ not found' },
+        200: {
+            description: 'OK',
+            content: { 'application/json': { schema: resolver(FaqCategorySingleResponseSchema) } },
+        },
+        404: { description: 'FAQ category not found' },
+    },
+});
+
+export const faqQuestionSingleDocs = describeRoute({
+    tags: ['FAQs'],
+    summary: 'Get FAQ question by id',
+    description: `Gets a published FAQ question by id. Includes: ${FAQ_QUESTION_INCLUDES.join(', ')}. Fields: ${getAllowedFields(faqQuestions, FAQ_QUESTION_FORBIDDEN).join(', ')}`,
+    responses: {
+        200: {
+            description: 'OK',
+            content: { 'application/json': { schema: resolver(FaqQuestionSingleResponseSchema) } },
+        },
+        404: { description: 'FAQ question not found' },
     },
 });
 
