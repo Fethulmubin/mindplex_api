@@ -21,6 +21,7 @@ import { ACCESS } from "$src/db/schema";
 import { guard, isOwnerOrRole } from "$src/middleware/auth";
 import postComments from "./comments";
 import postInteractions from "./interactions";
+import postAuthors from "./authors";
 import { desc, eq, sql } from "drizzle-orm";
 
 const app = new Hono<AppContext>();
@@ -243,6 +244,9 @@ app.delete("/:identifier", guard("admin"), deletePostDocs, validator("param", Po
 
 // /post/:identifier/comments
 app.route("/:identifier/comments", postComments);
+
+// /post/:identifier/authors
+app.route("/:identifier/authors", postAuthors);
 
 // /post/:identifier/interactions
 app.route("/:identifier", postInteractions);
