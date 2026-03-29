@@ -29,6 +29,10 @@ import {
   logoutDocs,
   ActivateAccountSchema,
   activateDocs,
+  ForgotPasswordSchema,
+  forgotPasswordDocs,
+  ResetPasswordSchema,
+  resetPasswordDocs,
 } from "./schema";
 
 const AUTH_PROVIDERS = {
@@ -200,6 +204,78 @@ auth.post("/activate", activateDocs, validator("json", ActivateAccountSchema), a
   });
 
   return c.json({ message: "Account successfully activated" });
+});
+
+auth.post("/forgot-password", forgotPasswordDocs, validator("json", ForgotPasswordSchema), async (c) => {
+  const db = c.get("db");
+  const { email } = c.req.valid("json");
+
+  const [user] = await db
+    .select({ id: users.id, email: users.email, isActivated: users.isActivated })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (!user || !user.isActivated) {
+    return c.json({ message: "If the email exists, a reset link has been sent." });
+  }
+
+  const { rawToken, hashedToken } = generateOpaqueToken();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(activationTokens).where(eq(activationTokens.userId, user.id));
+
+    await tx.insert(activationTokens).values({
+      userId: user.id,
+      token: hashedToken,
+      expiresAt,
+    });
+  });
+
+  c.get("debugData").resetPasswordToken = rawToken;
+  // TODO: Send email with `rawToken`
+  // await sendEmail(user.email, `https://mindplex.ai/reset-password?token=${rawToken}`);
+
+  return c.json({ message: "If the email exists, a reset link has been sent." });
+});
+
+auth.post("/reset-password", resetPasswordDocs, validator("json", ResetPasswordSchema), async (c) => {
+  const db = c.get("db");
+  const { token: rawIncomingToken, newPassword } = c.req.valid("json");
+
+  const hashedIncomingToken = hashToken(rawIncomingToken);
+
+  const [record] = await db
+    .select()
+    .from(activationTokens)
+    .innerJoin(users, eq(activationTokens.userId, users.id))
+    .where(eq(activationTokens.token, hashedIncomingToken))
+    .limit(1);
+
+  if (!record) {
+    return c.json({ error: "Invalid or expired token" }, 400);
+  }
+
+  if (new Date(record.activation_tokens.expiresAt) < new Date()) {
+    await db.delete(activationTokens).where(eq(activationTokens.id, record.activation_tokens.id));
+    return c.json({ error: "Invalid or expired token" }, 400);
+  }
+
+  const hashedPassword = await Bun.password.hash(newPassword, {
+    algorithm: "argon2id",
+    memoryCost: 65536,
+    timeCost: 2,
+  });
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ passwordHash: hashedPassword }).where(eq(users.id, record.users.id));
+
+    await tx.delete(activationTokens).where(eq(activationTokens.id, record.activation_tokens.id));
+  });
+
+  return c.json({ message: "Password reset successfully" });
 });
 
 auth.post("/social", socialLoginDocs, validator("json", SocialLoginSchema), async (c) => {

@@ -34,6 +34,19 @@ export const ActivateAccountSchema = v.object({
   token: v.pipe(v.string("Activation token is required"), v.minLength(1, "Activation token cannot be empty")),
 });
 
+export const ForgotPasswordSchema = v.object({
+  email: v.pipe(v.string("Email is required"), v.email("Invalid email format")),
+});
+
+export const ResetPasswordSchema = v.object({
+  token: v.pipe(v.string("Reset token is required"), v.minLength(1, "Reset token cannot be empty")),
+  newPassword: v.pipe(
+    v.string("New password is required"),
+    v.minLength(8, "Password must be at least 8 characters"),
+    v.maxLength(255, "Password is too long"),
+  ),
+});
+
 export const TokenResponseSchema = v.object({
   accessToken: v.string(),
   refreshToken: v.string(),
@@ -100,6 +113,40 @@ export const activateDocs = describeRoute({
   responses: {
     200: {
       description: "Account successfully activated",
+      content: {
+        "application/json": { schema: resolver(MessageResponseSchema) },
+      },
+    },
+    400: {
+      description: "Invalid or expired token",
+      content: {
+        "application/json": { schema: resolver(ErrorResponseSchema) },
+      },
+    },
+  },
+});
+
+export const forgotPasswordDocs = describeRoute({
+  tags: ["Auth"],
+  summary: "Request password reset",
+  description: "Generates a short-lived password reset token and dispatches a reset email.",
+  responses: {
+    200: {
+      description: "If the email exists, a reset link has been sent",
+      content: {
+        "application/json": { schema: resolver(MessageResponseSchema) },
+      },
+    },
+  },
+});
+
+export const resetPasswordDocs = describeRoute({
+  tags: ["Auth"],
+  summary: "Reset password",
+  description: "Verifies the reset token and sets a new password.",
+  responses: {
+    200: {
+      description: "Password reset successfully",
       content: {
         "application/json": { schema: resolver(MessageResponseSchema) },
       },
