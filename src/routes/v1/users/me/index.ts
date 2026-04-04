@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { validator } from "hono-openapi";
 import type { AppContext } from "$src/types";
 import { guard } from "$src/middleware/auth";
-import { userProfiles } from "$src/db/schema";
+import { refreshTokens, userProfiles, users } from "$src/db/schema";
 import { sanitizeUpdates } from "$src/utils";
 import {
   UpdateProfileSchema,
@@ -11,6 +11,8 @@ import {
   getProfileDocs,
   updateProfileDocs,
   getAccountDocs,
+  ChangePasswordSchema,
+  changePasswordDocs,
 } from "./schema";
 
 import preferences from "./preferences";
@@ -67,6 +69,39 @@ me.patch("/profile", guard("user"), updateProfileDocs, validator("json", UpdateP
 
   return c.json({ data: updated });
 });
+
+// PATCH /me/password
+me.patch("/password", guard("user"), changePasswordDocs, validator("json", ChangePasswordSchema), async (c) => {
+  const db = c.get("db");
+  const userId = c.get("userId")!;
+  const { currentPassword, newPassword, confirmPassword } = c.req.valid("json");
+
+  if (newPassword !== confirmPassword) {
+    return c.json({ error: "Passwords do not match" }, 400);
+  }
+
+  const [user] = await db.select({ id: users.id, passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId));
+
+  if (!user) return c.json({ error: "User not found" }, 404);
+  if (!user.passwordHash) return c.json({ error: "Password not set for this account" }, 400);
+
+  const isMatch = await Bun.password.verify(currentPassword, user.passwordHash);
+  if (!isMatch) return c.json({ error: "Invalid current password" }, 401);
+
+  const hashedPassword = await Bun.password.hash(newPassword, {
+    algorithm: "argon2id",
+    memoryCost: 65536,
+    timeCost: 2,
+  });
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ passwordHash: hashedPassword }).where(eq(users.id, userId));
+    await tx.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+  });
+
+  return c.json({ message: "Password updated successfully" });
+});
+
 
 me.route("/preferences", preferences);
 me.route("/notification-settings", notificationSettings);

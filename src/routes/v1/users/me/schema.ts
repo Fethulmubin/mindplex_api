@@ -69,6 +69,34 @@ export const updateProfileDocs = describeRoute({
   },
 });
 
+// ─── Password ───────────────────────────────────────────────
+
+export const ChangePasswordSchema = v.object({
+  currentPassword: v.string("Current password is required"),
+  newPassword: v.pipe(v.string("New password is required"), v.minLength(8, "Password must be at least 8 characters")),
+  confirmPassword: v.string("Confirm password is required"),
+});
+
+const ChangePasswordResponseSchema = v.object({
+  message: v.string(),
+});
+
+export const changePasswordDocs = describeRoute({
+  tags: ["Users"],
+  summary: "Change Password",
+  security: [{ bearerAuth: [] }],
+  description: "Changes the authenticated user's password and invalidates all active sessions.",
+  responses: {
+    200: {
+      description: "Password updated",
+      content: { "application/json": { schema: resolver(ChangePasswordResponseSchema) } },
+    },
+    400: { description: "Invalid password request" },
+    401: { description: "Invalid current password" },
+    404: { description: "User not found" },
+  },
+});
+
 // ─── Account ────────────────────────────────────────────────
 
 const AccountResponseSchema = v.object({
