@@ -22,6 +22,7 @@ import interests from "./interests";
 import education from "./education";
 import wallets from "./wallets";
 import friendRequests from "./friend-requests";
+import notifications from "./notifications";
 
 const me = new Hono<AppContext>();
 
@@ -110,5 +111,6 @@ me.route("/interests", interests);
 me.route("/education", education);
 me.route("/wallets", wallets);
 me.route("/friend-requests", friendRequests);
+me.route("/notifications", notifications);
 
 export default me;
